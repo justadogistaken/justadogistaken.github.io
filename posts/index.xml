@@ -1,13 +1,13 @@
 <?xml version="1.0" encoding="utf-8" standalone="yes"?>
 <rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
   <channel>
-    <title>Eric Bao</title>
-    <link>https://justadogistaken.github.io/</link>
-    <description>Recent content on Eric Bao</description>
+    <title>Posts on Eric Bao</title>
+    <link>https://justadogistaken.github.io/posts/</link>
+    <description>Recent content in Posts on Eric Bao</description>
     <generator>Hugo -- gohugo.io</generator>
     <language>en-us</language>
     <copyright>Copyright © 2008–2019, Steve Francia and the Hugo Authors; all rights reserved.</copyright>
-    <lastBuildDate>Wed, 15 Dec 2021 21:54:26 +0800</lastBuildDate><atom:link href="https://justadogistaken.github.io/index.xml" rel="self" type="application/rss+xml" />
+    <lastBuildDate>Wed, 15 Dec 2021 21:54:26 +0800</lastBuildDate><atom:link href="https://justadogistaken.github.io/posts/index.xml" rel="self" type="application/rss+xml" />
     <item>
       <title>随便写写</title>
       <link>https://justadogistaken.github.io/posts/hello-world-post/</link>
@@ -18,15 +18,6 @@
 今天闲着无聊，在GitHub上随便逛了逛，发现本科室友的博客在持续更新，点进去读了下跟我们大三大四在北京一起实习相关的“碎碎念”文章。看完真的感觉我校哥真的优秀，一篇碎碎念文章，也深入讲了他在实习时的思考，涉及公司目标，岗位设置，技术团队设置等。反过来想，我当时实习时并没有深入思考过这么多事情，一股对校哥的敬意油然而生，哈哈。
 也是读了我室友的文章，激起了我想要写文章记录一些想法和工作。
 好吧，先这样。。。</description>
-    </item>
-    
-    <item>
-      <title>get in touch</title>
-      <link>https://justadogistaken.github.io/contact/</link>
-      <pubDate>Mon, 01 Jan 0001 00:00:00 +0000</pubDate>
-      
-      <guid>https://justadogistaken.github.io/contact/</guid>
-      <description></description>
     </item>
     
   </channel>
