@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html><head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="your description">
+    <meta name="Author" content="Bao Jiangnan">
+    <meta name="keywords" content="blog">
+    <link rel="stylesheet" href=https://justadogistaken.github.io/css/syntax.css>
+    <link rel="stylesheet" href=https://justadogistaken.github.io/css/style.css>
+    <script src="https://kit.fontawesome.com/1b7478c139.js" crossorigin="anonymous"></script>
+    <title>Eric Bao</title>
+  </head><body><aside id="sidenav">
+    <header>
+    
+        <a href=https://justadogistaken.github.io/><img src="https://justadogistaken.github.io/avatar.png" alt="avatar"></a>
+        
+    
+
+    <a id="branding" href=https://justadogistaken.github.io/>
+        
+            Eric Bao
+        
+    </a>
+    </header>
+
+    <nav>
+        
+            		
+            <a href="/"
+                
+            >
+                <i class="fas fa-home fa-sm"></i>
+                <span>home</span>
+            </a>
+        
+            		
+            <a href="/posts/"
+                
+            >
+                <i class="fas fa-keyboard fa-ms"></i>
+                <span>blog</span>
+            </a>
+        
+            		
+            <a href="/tags"
+                
+            >
+                <i class="fas fa-tags fa-ms"></i>
+                <span>tags</span>
+            </a>
+        
+            		
+            <a href="https://github.com/justadogistaken"
+                
+                    target="_blank"
+                
+            >
+                <i class="fab fa-github fa-ms"></i>
+                <span>github</span>
+            </a>
+        
+            		
+            <a href="/contact"
+                
+            >
+                <i class="far fa-envelope"></i>
+                <span>contact</span>
+            </a>
+        
+    </nav>
+</aside>
+<main id="main">
+            <a href="javascript:void(0)" id="closebtn" onclick="navToggle()"><i class="fas fa-bars fa-lg"></i></a>
+            <div class="content">
+    
+    <h1 id="title">混部场景下的单机服务质量保障</h1>
+    
+      
+    <nav id="TableOfContents">
+  <ul>
+    <li>
+      <ul>
+        <li><a href="#背景">背景</a></li>
+        <li><a href="#相关工作">相关工作</a></li>
+        <li><a href="#框架设计">框架设计</a></li>
+        <li><a href="#方法思考">方法思考</a></li>
+        <li><a href="#参考资料">参考资料</a></li>
+      </ul>
+    </li>
+  </ul>
+</nav>
+    <h3 id="背景">背景</h3>
+<p>背景主要分两个方面：（1）应用级性能数据获取存在困难。（2）集群作业运行的不可预测性。</p>
+<h4 id="应用级性能数据获取困难">应用级性能数据获取困难</h4>
+<p>应用级性能数据一般指在线应用的Latency；很多文章会以公有云上，业务的Latency为黑盒为背景，从而寻找一些系统指标，如IPC/CPI/MPKI等作为应用性能指标的proxy，实时检测与分析当前应用的性能是否受到干扰。但是在一些私有云场景，并不是黑盒，感觉其实完全可以直接用来实时检测应用的QoS；但是我在调研后，发现即使在私有云场景，获取应用级的性能指标仍然没有十分容易，仍然存在一些问题（如数据同步不及时，接口限流等），这些问题就导致我们无法实时检测应用QoS，动态调整应用资源。我想这应该是Google，阿里，腾讯，百度等公司内部也采用CPI作为性能指标的原因吧。</p>
+<p>所以综合调研思考，我认为寻找单机系统上通用的性能指标作为应用性能指标的proxy十分有价值。</p>
+<h4 id="集群作业运行的不可预测性">集群作业运行的不可预测性</h4>
+<p>目前，k8s应该已经成为工业界容器管理与编排的state of the art了；但是k8s调度时，考虑的资源是依靠用户经验，并且静态的。这样很容易造成资源浪费，所以很多公司会对应用构建资源画像，即预测应用的资源使用量，然后超卖机器资源，这样确实能一定程度上减少资源浪费。但是真实环境总会有许多不可预料的情况发生，即真实资源使用曲线与预测曲线一定存在差别的，我认为预测算法不可能做到十分准确；同时，因为真实环境的不可预料性，就算预测能做到100%的准确，也不会有哪个团队会完全信赖预测曲线吧。</p>
+<p>所以单机上，在线作业的服务质量可能很容易受到影响；那么做 “单机服务干扰检测与调控(服务质量保障)” 十分有必要。</p>
+<h3 id="相关工作">相关工作</h3>
+<table>
+<thead>
+<tr>
+<th>来源</th>
+<th>性能指标</th>
+<th>核心方法</th>
+<th>启发</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Google CPI2[1]EuroSys 13 (CCF B)</td>
+<td>CPI</td>
+<td>Google的方法，完全基于历史数据做统计分析，不需要单独做压测，方法简单。Google基于历史数据，对CPI与RT的相关性做论证，得出对于<strong>链路处于叶子</strong>，且主要为<strong>CPU型</strong>的应用，相关性有0.97；其他一些服务，如部分IO型，中间节点服务，仍然0.7+的相关性。所以确定CPI可以作为性能的proxy。在线作业通常为常驻作业，这类作业在同一CPU型号的CPI数据走向通常呈现一定规律，是可预测的。所以用传统的<strong>滑动窗口预测</strong>方法，对下一周期的CPI进行预测。<img src="/images/cpi-1.png" alt="image-20211226173042857">并且每天CPI的数据分布都相差不大，所以可以直接用统计的方法，算前一天CPI的平均值CPIavg，及标准差stddev，设置 CPIavg + 2 * stddev为阈值，超过该值，认定QoS受到影响。同时，为了避免误判，规则为5min中内发现3次超过，才确定QoS受到影响。<!-- raw HTML omitted --><img src="/images/cpi-2.png" alt="image-20211226173329100"></td>
+<td>（1）存在一些在线服务，他们的CPI走向，通常是具有规律的，并且每天的分布也是相似，所以完全可以用统计分析的方法，进行QoS检测。<!-- raw HTML omitted -->（2）文章还对如何鉴定干扰者做了定义。</td>
+</tr>
+<tr>
+<td>AliBaBa[2]HPCA 2021（CCF A)</td>
+<td>CPI</td>
+<td>阿里这篇文章的主要贡献在于如何更细粒度的调整LLC；Intel RDT提供了CAT和MBA两种技术（用法与cgroups相似，由于推入container runtime太慢了，intel专门开源了intel-resource-manager支持他家的黑科技），前者是对LLC size的隔离，后者是对L2-L3内存带宽的隔离；<!-- raw HTML omitted -->由于两个维度单独调整的粒度都是10%，粒度太粗；阿里通过CAT和MBA结合，实现更细粒度的调整。其中用CPI做干扰检测，但是阿里是用压测的方式计算出；RT与CPI的相关性，构建<code>RT=k*CPI+l</code> like线性方程；从而用实时的CPI，计算出大致的RT值，判断应用QoS是否超过SLA。</td>
+<td></td>
+</tr>
+<tr>
+<td>PARTIES[3]</td>
+<td>Latency(ms)</td>
+<td>* 压测得出单应用最合适的Latency-targetQoS（加压直至Latency与压力曲线出现拐点）<!-- raw HTML omitted -->* 资源维度为&lt;cpu core， cache way， cpu frequency， mem space， disk bandwidth&gt;，对应的调整粒度为&lt;1 core, 1 way, 100MHz, 1GB, 1GB/s&gt;<!-- raw HTML omitted -->* 500ms检测一次QoS，如果发现与targetQoS偏离过大，则开始调整资源，对每个应用每轮尝试不同的资源up/down（等于猜受干扰资源），直至保证了机器所有应用的QoS。文章提供了很好的思路，资源是可交换的，即发现干扰时，不用统一扩容或缩容资源，文章的背景是所有在线应用部署在一个集群里，所以一台机器各维度资源有限，那就通过交换，比如把io密集型应用的cpu让给cpu密集型的。从而保证每个应用具有合适的资源。</td>
+<td>文章虽然是在线作业之间出让资源，但是对于在离线混部场景，我们可以考虑的是，即使在线作业受到干扰了，是否仍然有部分维度的资源可以宽松处理，而不是全面禁止或压制。</td>
+</tr>
+<tr>
+<td>[4]</td>
+<td>CPI</td>
+<td>CPI用来表示应用performance是否收受到cache干扰；MPKI检测cache上是否发生干扰了。<!-- raw HTML omitted -->1.系统持续采集数据，X t= (CPI t, MPKI t, OCC t, CPU t)，包含CPI，MPKI，OCC（cache occupation），CPU。<!-- raw HTML omitted -->2.竞争检测的先决条件是cpu利用率在[l, u)区间。满足先决条件后，同时MPKI t&gt; θ MPKI, and CPI t&gt; θ CPI，则认为应用受到cache的竞争。（θ是相应的阈值，需要通过学习得到的）3.该文章的特点是如何找到CPI，MPKI的阈值。用ﬁnite mixture model对历史数据建模，通过概率分布情况，可初步得出4个阈值。然后再根据occupation与MPKI进行分类，以及meta-learning，得出一个合适的阈值。（具体做法还没看明白）<!-- raw HTML omitted --><img src="/images/mpki-1.png" alt="image-20211226173914060"><!-- raw HTML omitted --><img src="/images/mpki-2.png" alt="image-20211226173932181"></td>
+<td>该论文用CPI表示应用性能，但并未与其他文章一样，没有建立CPI与应用级metrics的关系式，所以完全是通过历史数据得到应用性能区间的。并未直接压测，或是跟rt进行关联，得到具体的ground-truth值。如果可行的话，通用性很强。但是效果不一定可靠，并且算法对于我们也是黑盒。但是一个启发是；CPI阈值的基准，我们完全可以通过CPI，RT的历史数据计算。另外，我们只需要思考，如何定义cache上受到了干扰，即MPKI这个指标，我们应该怎么利用。</td>
+</tr>
+<tr>
+<td>Heracles[5]</td>
+<td>95/99th latency</td>
+<td>两层设计，top-level与sub-controller。<!-- raw HTML omitted --><strong>顶层controller：<strong>拉取在线作业load，在线作业latency。从而控制BE增长与否。仅直接控制cpu core资源。每次减少2core</strong>core &amp; memory controller：</strong><!-- raw HTML omitted --><img src="/images/slo.png" alt="image-20211226174027059">基于websearch的压测数据，做了离线分析。发现应用性能与LLC size/cores 之间的关系是一个凸函数，所以在llc，core两个维度调整一定是可以找到最优解的。该控制器的核心是监控机器当前带宽，以及在线作业所需带宽预测值，在超过阈值时（90%），对离线资源的core和llc进行调整。<!-- raw HTML omitted -->**cpu power controller：**监听cpu power，及在线作业cpu frequency。0.9为阈值，分别增大或减小离线作业的frequency。<!-- raw HTML omitted -->**Network controller：**获取当前在线作业egress 带宽ls_bw。设置 be_bw = 机器总带宽all_bw - ls_bw - max(0.05 * all_bw, 0.1 * ls_bw)。用linux “HTB qdiscs”设置带宽限制。</td>
+<td>文章是15年的，有一些老了。不过有些思路挺棒的，使用子系统分别管理各个维度的资源，每个管理器最多管理1-2个隔离资源。这样极大降低了复杂度；如果说要做一个全局的资源规划，一定是十分复杂的，传统方法是无法做到的；文章对干扰的认定粒度比较粗，“网络带宽”，“内存带宽” &gt; 0.9 * total。我们可以用更具体的指标检测出具体资源的竞争，如MPKI检测cache上的竞争。文章仅考虑了单机单在线应用与其他离线的混部。</td>
+</tr>
+<tr>
+<td>[6]</td>
+<td>latency，throughput</td>
+<td><img src="/images/lantency-throghput.png" alt="image-20211226174054551"><!-- raw HTML omitted -->文章做了个IPC与latency的实验，以验证仅靠IPC不一定能很好的分辨资源竞争。（这个点很有帮助，因为我在做实验的发现，如果应用行为发生很大的变化，IPC与latency的相关性会有较大变化）如图，900s-1300s之间，用PARSEC benchmark (Blacksholes)加压，确实latency上升，IPC下降了，符合我们的预期。但是在1500s-1800s之间。实验者将请求量大幅降低，那么CPU分配给该应用的cycles会减少，自身instruction数量也会随着负载减少而减少（我自己实验也会有这个现象，在很空闲时)；但是计算的IPC可能会低于平常的。 所以难点在于，我们如何分辨是 “contention” 还是 “requests drop largely”。文中解决方法：1.监听IPC指标变化，若IPC发生剧变，则被当为异常值，此时detector组件会聚合一段时间的IPC值，将其与历史IPC值进行k-means聚类，如果能很好的聚成2类。那么认为此时处于低负载期。若无法聚类成功，则压制其他应用，如果在线应用的IPC降低了，说明刚刚处于竞争中，否则刚刚是空闲状态。</td>
+<td>文章让我重点关注到了，IPC下降背后的原因。之前做实验，也注意到了，空闲时应用IPC仍然低于正常负载时（IPC越低我们认为性能越差），但是没太关注，以为是偶然。这篇论文重点解决这样的问题“如何分辨IPC下降是 应用空闲 还是 共享资源被竞争”。文中的方案是（1）把当前的IPC数据与历史数据做聚类，若能很好的将数据分类两类，则认为当前IPC下降是空闲导致。（2）若无法分类完成，则压制离线作业资源，若在线作业IPC有所恢复，则说明共享资源处于竞争中。如果我们要解决这样的问题，我初步的想法是：观测instructions数量，因为 “空闲期” 和 “资源受竞争/正常负载”两类时期的instructions数量的量级差距很大，可以靠历史instructions数据分布情况分出一个合理的边界值。那在IPC下降时首先根据instructions数量就能够判断IPC下降的原因。</td>
+</tr>
+</tbody>
+</table>
+<h3 id="框架设计">框架设计</h3>
+<h3 id="方法思考">方法思考</h3>
+<h4 id="cpi数据分布模型">CPI数据分布模型</h4>
+<p>在“干扰检测”上可以做的尽量简单可控，把重心放在“干扰处理”上。</p>
+<p>在线业务通常是长作业，pod是长期运行在一个节点之上的，而总体上来说，该节点受到的流量负载会呈现一定规律，那么其CPI每天的动态分布也会比较相似。</p>
+<p>可以通过聚合某一CPU模型的所有pod CPI分布的情况，设定一个CPI tp线，再加上CPU usage的阈值，避免误判（初步思路，具体方法没定），每一个周期（一天/半天）更新一次模型。</p>
+<p>这样的话，就不需要单独做压测(压测在生产环境不现实，需要业务方介入，一家大公司可能有上万个服务)，或者先验知识。</p>
+<h4 id="子资源控制器">子资源控制器</h4>
+<p>受Heracles[3]启发；Heracles用三个子资源控制器，分别监听“内存带宽”，“cpu 频率”，“网络带宽”，预设静态阈值，超过该阈值，相应地进行资源调整。</p>
+<p>我们也监控各维度的资源，借用子资源控制器的思想。应用CPI如果受竞争影响而下降，一定会伴随有其他维度的数据变化，也许我们能用一些统计方法，识别当前可能的竞争资源。从而做具体的压制。</p>
+<p>（其实还应该考虑到CPI变化带来的返回，竞争资源的识别会存在错误的情况，需要靠CPI的反馈来进一步调整子资源控制器的行为）</p>
+<h4 id="所需监控指标">所需监控指标</h4>
+<table>
+<thead>
+<tr>
+<th>指标</th>
+<th>采集工具</th>
+<th>含义</th>
+<th>注解</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>L2-L3 memory bandwidth</td>
+<td>Intel pqos</td>
+<td>l2-l3的带宽</td>
+<td>这个是L2-L3的带宽。还不确定能不能直接体现内存带宽，并且这个需要内核对RDT的支持。</td>
+</tr>
+<tr>
+<td>CPI per period</td>
+<td>linux perf</td>
+<td>cycles per instruction</td>
+<td></td>
+</tr>
+<tr>
+<td>Instructions per period</td>
+<td>每采集周期指令数量</td>
+<td>用于辅助辨别当前应用空闲 or 竞争。</td>
+<td></td>
+</tr>
+<tr>
+<td>LLC MPKI</td>
+<td>每1K 指令LLC 丢失率</td>
+<td>(LLC-load-misses+LLC-store-misses)/(instructions/1000)orLLC-load-misses/(instructions/1000)（可用于辨别应用的LLC是否受到竞争，从而指导LLC cache上的隔离）</td>
+<td></td>
+</tr>
+<tr>
+<td>memory bandwidth</td>
+<td>不确定</td>
+<td>内存带宽</td>
+<td>应该是没有直接的度量工具，一些文章的内存带宽是用LLC Miss，LLC line等参数人为进行计算的。</td>
+</tr>
+</tbody>
+</table>
+<h3 id="参考资料">参考资料</h3>
+<p>[1] <a href="https://research.google/people/XiaoZhang/">Xiao Zhang, Eric Tune, Robert Hagmann, Rohit Jnagal, Vrigo Gokhale, and John Wilkes. 2013. CPI2: CPU performance isolation for shared compute clusters. In Proceedings of the 8th ACM European Conference on Computer Systems (EuroSys &lsquo;13</a><a href="https://km.sankuai.com/page/">). Association for Computing Machinery, New York, NY, USA, 379–391. DOI:https://doi.org/10.1145/2465351.2465388</a>. Association for Computing Machinery, New York, NY, USA, 379–391. DOI:https://doi.org/10.1145/2465351.2465388)</p>
+<p>[2] Y. Zhang, et al., &ldquo;LIBRA: Clearing the Cloud Through Dynamic Memory Bandwidth Management,&rdquo; in 2021 IEEE International Symposium on High-Performance Computer Architecture (HPCA), Seoul, Korea (South), 2021 pp. 815-826. doi: 10.1109/HPCA51647.2021.00073 keywords: {scalability;memory management;bandwidth;quality of service;production;throughput;hardware} url: <a href="https://doi.ieeecomputersociety.org/10.1109/HPCA51647.2021.00073">https://doi.ieeecomputersociety.org/10.1109/HPCA51647.2021.00073</a></p>
+<p>[3] Shuang Chen, Christina Delimitrou, and José F. Martínez. 2019. PARTIES: QoS-Aware Resource Partitioning for Multiple Interactive Services. In Proceedings of the Twenty-Fourth International Conference on Architectural Support for Programming Languages and Operating Systems (ASPLOS &lsquo;19<a href="https://km.sankuai.com/page/">). Association for Computing Machinery, New York, NY, USA, 107–120. DOI:https://doi.org/10.1145/3297858.3304005</a>. Association for Computing Machinery, New York, NY, USA, 107–120. DOI:https://doi.org/10.1145/3297858.3304005)</p>
+<p>[4] H. Shen and C. Li, &ldquo;Detecting Last-Level Cache Contention in Workload Colocation with Meta Learning,&rdquo; 2019 IEEE International Symposium on Workload Characterization (IISWC), 2019, pp. 14-23, doi: 10.1109/IISWC47752.2019.9041983.</p>
+<p>[5] Lo, David, Liqun Cheng, Rama K. Govindaraju, Parthasarathy Ranganathan and Christoforos E. Kozyrakis. “Heracles: Improving resource efficiency at scale.” 2015 ACM/IEEE 42nd Annual International Symposium on Computer Architecture (ISCA) (2015): 450-462.</p>
+<p>[6] J. Vallone, R. Birke and L. Y. Chen, &ldquo;Making Neighbors Quiet: An Approach to Detect Virtual Resource Contention,&rdquo; in IEEE Transactions on Services Computing, vol. 13, no. 5, pp. 843-856, 1 Sept.-Oct. 2020, doi: 10.1109/TSC.2017.2720742.</p>
+
+    
+    <div class="nav-next-prev">
+        <div class="nav-prev">
+            
+                <a href="https://justadogistaken.github.io/posts/hello-world-post/"><i class="fas fa-chevron-left"></i></a>
+            
+        </div>
+        <a class="nav-top" href="#">top</i></a>
+        <div class="nav-next">
+            
+                <a class="grayed-out" href="javascript:void()"><i class="fas fa-chevron-right"></i></a>
+            
+        </div>
+    </div>
+    
+
+            </div><footer>
+<div class="footer-content">
+
+  <div class="contact-info">
+      
+          <div class="footer-mail">
+          <i class="far fa-envelope"></i> <a href="mailto:baojn1998@163.com">baojn1998@163.com</a> </div>
+      
+      
+  </div>
+
+
+<p class="copyright meta">Copyright © 2008–2019, Steve Francia and the Hugo Authors; all rights reserved.</p>
+
+</div>
+</footer></main>
+    </body>
+    <script src=https://justadogistaken.github.io/js/navbutton.js></script>
+</html>
