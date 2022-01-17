@@ -1,38 +1,22 @@
-<?xml version="1.0" encoding="utf-8" standalone="yes"?>
-<rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom">
-  <channel>
-    <title>Posts on Eric Bao</title>
-    <link>https://justadogistaken.github.io/posts/</link>
-    <description>Recent content in Posts on Eric Bao</description>
-    <generator>Hugo -- gohugo.io</generator>
-    <language>en-us</language>
-    <copyright>Copyright © 2008–2019, Steve Francia and the Hugo Authors; all rights reserved.</copyright>
-    <lastBuildDate>Sun, 26 Dec 2021 17:51:26 +0800</lastBuildDate><atom:link href="https://justadogistaken.github.io/posts/index.xml" rel="self" type="application/rss+xml" />
-    <item>
-      <title>混部场景下的单机服务质量保障</title>
-      <link>https://justadogistaken.github.io/posts/handle-interference/</link>
-      <pubDate>Sun, 26 Dec 2021 17:51:26 +0800</pubDate>
-      
-      <guid>https://justadogistaken.github.io/posts/handle-interference/</guid>
-      <description>背景 背景主要分两个方面：（1）应用级性能数据获取存在困难。（2）集群作业运行的不可预测性。
-应用级性能数据获取困难 应用级性能数据一般指在线应用的Latency；很多文章会以公有云上，业务的Latency为黑盒为背景，从而寻找一些系统指标，如IPC/CPI/MPKI等作为应用性能指标的proxy，实时检测与分析当前应用的性能是否受到干扰。但是在一些私有云场景，并不是黑盒，感觉其实完全可以直接用来实时检测应用的QoS；但是我在调研后，发现即使在私有云场景，获取应用级的性能指标仍然没有十分容易，仍然存在一些问题（如数据同步不及时，接口限流等），这些问题就导致我们无法实时检测应用QoS，动态调整应用资源。我想这应该是Google，阿里，腾讯，百度等公司内部也采用CPI作为性能指标的原因吧。
-所以综合调研思考，我认为寻找单机系统上通用的性能指标作为应用性能指标的proxy十分有价值。
-集群作业运行的不可预测性 目前，k8s应该已经成为工业界容器管理与编排的state of the art了；但是k8s调度时，考虑的资源是依靠用户经验，并且静态的。这样很容易造成资源浪费，所以很多公司会对应用构建资源画像，即预测应用的资源使用量，然后超卖机器资源，这样确实能一定程度上减少资源浪费。但是真实环境总会有许多不可预料的情况发生，即真实资源使用曲线与预测曲线一定存在差别的，我认为预测算法不可能做到十分准确；同时，因为真实环境的不可预料性，就算预测能做到100%的准确，也不会有哪个团队会完全信赖预测曲线吧。
-所以单机上，在线作业的服务质量可能很容易受到影响；那么做 “单机服务干扰检测与调控(服务质量保障)” 十分有必要。
-相关工作    来源 性能指标 核心方法 启发     Google CPI2[1]EuroSys 13 (CCF B) CPI Google的方法，完全基于历史数据做统计分析，不需要单独做压测，方法简单。Google基于历史数据，对CPI与RT的相关性做论证，得出对于链路处于叶子，且主要为CPU型的应用，相关性有0.97；其他一些服务，如部分IO型，中间节点服务，仍然0.7+的相关性。所以确定CPI可以作为性能的proxy。在线作业通常为常驻作业，这类作业在同一CPU型号的CPI数据走向通常呈现一定规律，是可预测的。所以用传统的滑动窗口预测方法，对下一周期的CPI进行预测。并且每天CPI的数据分布都相差不大，所以可以直接用统计的方法，算前一天CPI的平均值CPIavg，及标准差stddev，设置 CPIavg + 2 * stddev为阈值，超过该值，认定QoS受到影响。同时，为了避免误判，规则为5min中内发现3次超过，才确定QoS受到影响。 （1）存在一些在线服务，他们的CPI走向，通常是具有规律的，并且每天的分布也是相似，所以完全可以用统计分析的方法，进行QoS检测。（2）文章还对如何鉴定干扰者做了定义。   AliBaBa[2]HPCA 2021（CCF A) CPI 阿里这篇文章的主要贡献在于如何更细粒度的调整LLC；Intel RDT提供了CAT和MBA两种技术（用法与cgroups相似，由于推入container runtime太慢了，intel专门开源了intel-resource-manager支持他家的黑科技），前者是对LLC size的隔离，后者是对L2-L3内存带宽的隔离；由于两个维度单独调整的粒度都是10%，粒度太粗；阿里通过CAT和MBA结合，实现更细粒度的调整。其中用CPI做干扰检测，但是阿里是用压测的方式计算出；RT与CPI的相关性，构建RT=k*CPI+l like线性方程；从而用实时的CPI，计算出大致的RT值，判断应用QoS是否超过SLA。    PARTIES[3] Latency(ms) * 压测得出单应用最合适的Latency-targetQoS（加压直至Latency与压力曲线出现拐点）* 资源维度为&amp;lt;cpu core， cache way， cpu frequency， mem space， disk bandwidth&amp;gt;，对应的调整粒度为&amp;lt;1 core, 1 way, 100MHz, 1GB, 1GB/s&amp;gt;* 500ms检测一次QoS，如果发现与targetQoS偏离过大，则开始调整资源，对每个应用每轮尝试不同的资源up/down（等于猜受干扰资源），直至保证了机器所有应用的QoS。文章提供了很好的思路，资源是可交换的，即发现干扰时，不用统一扩容或缩容资源，文章的背景是所有在线应用部署在一个集群里，所以一台机器各维度资源有限，那就通过交换，比如把io密集型应用的cpu让给cpu密集型的。从而保证每个应用具有合适的资源。 文章虽然是在线作业之间出让资源，但是对于在离线混部场景，我们可以考虑的是，即使在线作业受到干扰了，是否仍然有部分维度的资源可以宽松处理，而不是全面禁止或压制。   [4] CPI CPI用来表示应用performance是否收受到cache干扰；MPKI检测cache上是否发生干扰了。1.</description>
-    </item>
-    
-    <item>
-      <title>随便写写</title>
-      <link>https://justadogistaken.github.io/posts/hello-world-post/</link>
-      <pubDate>Wed, 15 Dec 2021 21:54:26 +0800</pubDate>
-      
-      <guid>https://justadogistaken.github.io/posts/hello-world-post/</guid>
-      <description>本科时候开过几次博客repo，写个两篇就又删了。后面的一段时间也想再继续写起来，把研究的内容与工作，还有当下经历的事情记录下来。等过一段时间再捡起来读一读。
-今天闲着无聊，在GitHub上随便逛了逛，发现本科室友的博客在持续更新，点进去读了下跟我们大三大四在北京一起实习相关的“碎碎念”文章。看完真的感觉我校哥真的优秀，一篇碎碎念文章，也深入讲了他在实习时的思考，涉及公司目标，岗位设置，技术团队设置等。反过来想，我当时实习时并没有深入思考过这么多事情，一股对校哥的敬意油然而生，哈哈。
-也是读了我室友的文章，激起了我想要写文章记录一些想法和工作。
-好吧，先这样。。。</description>
-    </item>
-    
-  </channel>
+<rss xmlns:atom="http://www.w3.org/2005/Atom" version="2.0">
+    <channel>
+        <title>所有文章 - David Bao</title>
+        <link>https://justadogistaken.github.io/posts/</link>
+        <description>所有文章 | David Bao</description>
+        <generator>Hugo -- gohugo.io</generator><language>zh-CN</language><managingEditor>baojn1998@163.com (David Bao)</managingEditor>
+            <webMaster>baojn1998@163.com (David Bao)</webMaster><lastBuildDate>Sun, 26 Dec 2021 17:51:26 &#43;0800</lastBuildDate><atom:link href="https://justadogistaken.github.io/posts/" rel="self" type="application/rss+xml" /><item>
+    <title>混部场景下的单机服务质量保障</title>
+    <link>https://justadogistaken.github.io/posts/handle-interference/</link>
+    <pubDate>Sun, 26 Dec 2021 17:51:26 &#43;0800</pubDate>
+    <author>作者</author>
+    <guid>https://justadogistaken.github.io/posts/handle-interference/</guid>
+    <description><![CDATA[背景 背景主要分两个方面：（1）应用级性能数据获取存在困难。（2）集群作业运行的不可预测性。 应用级性能数据获取困难 应用级性能数据一般指在线应用]]></description>
+</item><item>
+    <title>随便写写</title>
+    <link>https://justadogistaken.github.io/posts/hello-world-post/</link>
+    <pubDate>Wed, 15 Dec 2021 21:54:26 &#43;0800</pubDate>
+    <author>作者</author>
+    <guid>https://justadogistaken.github.io/posts/hello-world-post/</guid>
+    <description><![CDATA[本科时候开过几次博客repo，写个两篇就又删了。后面的一段时间也想再继续写起来，把研究的内容与工作，还有当下经历的事情记录下来。等过一段时间]]></description>
+</item></channel>
 </rss>
