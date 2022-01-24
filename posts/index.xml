@@ -4,7 +4,14 @@
         <link>https://justadogistaken.github.io/posts/</link>
         <description>所有文章 | David Bao</description>
         <generator>Hugo -- gohugo.io</generator><language>zh-CN</language><managingEditor>baojn1998@163.com (David Bao)</managingEditor>
-            <webMaster>baojn1998@163.com (David Bao)</webMaster><lastBuildDate>Sun, 26 Dec 2021 17:51:26 &#43;0800</lastBuildDate><atom:link href="https://justadogistaken.github.io/posts/" rel="self" type="application/rss+xml" /><item>
+            <webMaster>baojn1998@163.com (David Bao)</webMaster><lastBuildDate>Mon, 24 Jan 2022 16:10:15 &#43;0800</lastBuildDate><atom:link href="https://justadogistaken.github.io/posts/" rel="self" type="application/rss+xml" /><item>
+    <title>透过一次registry(distribution)的cache缓存bug看context</title>
+    <link>https://justadogistaken.github.io/posts/distribution-cache-failed/</link>
+    <pubDate>Mon, 24 Jan 2022 16:10:15 &#43;0800</pubDate>
+    <author>作者</author>
+    <guid>https://justadogistaken.github.io/posts/distribution-cache-failed/</guid>
+    <description><![CDATA[背景 去年在做sealer的时候，考虑到需要改造distribution[1]（registry，镜像仓库，GitHub仓库为distribu]]></description>
+</item><item>
     <title>混部场景下的单机服务质量保障</title>
     <link>https://justadogistaken.github.io/posts/handle-interference/</link>
     <pubDate>Sun, 26 Dec 2021 17:51:26 &#43;0800</pubDate>
